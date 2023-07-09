@@ -23,6 +23,8 @@ import psycopg2
 import requests                        
 from bs4 import BeautifulSoup           
 from selenium import webdriver         
+from webdriver_manager.chrome import ChromeDriverManager
+
 import json                            
 
 
@@ -45,7 +47,7 @@ def get_soup_elements(typ_obchodu = "prodej", typ_stavby = "byty", pages = 1):
         link = link.get('href')   
         elements.append(link)     
     elements = elements[0::2]   
-
+    
     records = soup.find_all(class_ ='numero ng-binding')[1].text
     records = re.split(r'\D', str(records))                         
     records = ",".join(records).replace(",", "")
@@ -89,6 +91,70 @@ def get_soup_elements(typ_obchodu = "prodej", typ_stavby = "byty", pages = 1):
     
     return elements
 
+def get_img(typ_obchodu = "prodej", typ_stavby = "byty", pages = 1):  
+    
+    browser = webdriver.Chrome()
+    
+    
+    url_x = r"https://www.sreality.cz/hledani"             
+    url = url_x + "/" +  typ_obchodu + "/" +  typ_stavby
+
+    browser.get(url)    # (url).text ??
+    sleep(random.uniform(1.0, 1.5))
+    innerHTML = browser.execute_script("return document.body.innerHTML")
+    soup = BeautifulSoup(innerHTML,'lxml') # "parser" ?? 
+
+    img = []
+
+    for link in soup.findAll('img', attrs={'src': re.compile("^https://d18")}):      
+        link = link.get('src')   
+        img.append(link)     
+    #del img[0]
+    img = img[0::6] 
+
+    
+    records = soup.find_all(class_ ='numero ng-binding')[1].text
+    records = re.split(r'\D', str(records))                         
+    records = ",".join(records).replace(",", "")
+    records = int(records)
+    max_page = math.ceil(records / 20)   
+    print("----------------")
+    print("Scrapuji: " + str(typ_obchodu) + " " + str(typ_stavby))
+    print("Celkem inzerátů: " + str(records))
+    print("Celkem stránek: " + str(max_page))
+    
+    if pages == 999:
+        print("Scrapuji (pouze) " + str(pages) + " stran.")
+        print("----------------")
+  
+    
+    for i in range(pages-1):   
+        i = i+2
+        
+        sys.stdout.write('\r'+ "Strana " + str(i-1) + " = " + str(round(100*(i-1)/(pages), 2)) + "% progress. Zbývá cca: " + str(round(random.uniform(3.4, 3.8)*(pages-(i-1)), 2 )) + " sekund.")    # Asi upravím čas, na rychlejším kabelu v obýváku je to občas i tak 3 sec :O
+
+        url2 = url + "?strana=" + str(i)
+        browser.get(url2)
+
+        sleep(random.uniform(1.0, 1.5))
+
+        innerHTML = browser.execute_script("return document.body.innerHTML")
+        soup2 = BeautifulSoup(innerHTML,'lxml')  
+
+        img2 = []
+
+        for link in soup2.findAll('img', attrs={'src': re.compile("^https://d18")}):      
+            link = link.get('src')   
+            img2.append(link)     
+        #del img[0]
+        img2 = img2[0::6] 
+        img = img + img2
+
+    
+    browser.quit()   
+    
+    return img
+
 
 def elements_and_ids(x):
     
@@ -108,23 +174,27 @@ def elements_and_ids(x):
 def scrap_all(typ_obchodu = "prodej", typ_stavby = "byty", pages = 1):
     
     data = get_soup_elements(typ_obchodu = typ_obchodu, typ_stavby = typ_stavby, pages = pages)
-    print( "1/8 Data scrapnuta, získávám URLs.")
+    print( "1/2 Data scrapnuta, získávám URLs.")
     
     data = elements_and_ids(data)
     data.to_excel(r"a1_URLs_prodej_byty.xlsx")
-    print( "2/8 Získány URL, nyní získávám Souřadnice, Ceny a Popis - několik minut...")
+    print( "2/2 Získány URL, nyní získávám imgs - několik minut...")
+    img1 = get_img(typ_obchodu = typ_obchodu, typ_stavby = typ_stavby, pages = pages)
+    l = len(img1)
+    data = data.head(l)
+    data["img"] = img1
     
 
     return data
 
-data = scrap_all(pages=25)
+data = scrap_all(pages=4)
 
 data[['null','detail', 'prodej','byt','velikost','lokace','id']] = data.url.str.split("/", expand = True)
 data = data.drop(['url','null', 'detail','prodej','byt','id'], axis=1)
-data.to_csv('sreality.csv')
 
-data.to_csv('sreality.csv')
+data.to_csv('sreality.csv', sep=';',index=False)
 
+import psycopg2
 conn = psycopg2.connect(host='localhost',
 port = '5432',
 user = 'postgres',
@@ -135,12 +205,13 @@ cur = conn.cursor()
 
 cur.execute('DROP TABLE IF EXISTS sreality')
 
-create_script= "CREATE TABLE IF NOT EXISTS sreality (ID INT,Velikost VARCHAR(255), Lokace VARCHAR(255))"
+create_script = "CREATE TABLE IF NOT EXISTS sreality (IMG VARCHAR(255), Velikost VARCHAR(255), Lokace VARCHAR(255))"
 cur.execute(create_script)
 
 with open('sreality.csv', 'r') as f:
-    next(f) 
-    cur.copy_from(f, 'sreality', sep=',')
+    next(f)
+    cur.copy_from(f, 'sreality', sep=';', columns=('img', 'velikost', 'lokace'))
+
 
 conn.commit()
 conn.close()

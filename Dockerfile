@@ -5,14 +5,21 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Set the ChromeDriver version as a build argument
-ARG CHROME_DRIVER_VERSION=114.0.5735.90
+# Install Chrome, Selenium, and other dependencies
+RUN apt-get update && \
+    apt-get install -y gnupg wget curl unzip --no-install-recommends && \
+    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
+    apt-get update -y && \
+    apt-get install -y google-chrome-stable && \
+    CHROMEVER=$(google-chrome --product-version | grep -o "[^\.]*\.[^\.]*\.[^\.]*") && \
+    DRIVERVER=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROMEVER") && \
+    wget -q --continue -P /chromedriver "http://chromedriver.storage.googleapis.com/$DRIVERVER/chromedriver_linux64.zip" && \
+    unzip /chromedriver/chromedriver* -d /chromedriver
 
-# Download and install ChromeDriver
-RUN curl -SL "https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip" -o /tmp/chromedriver.zip \
-    && unzip /tmp/chromedriver.zip -d /app
 
+COPY sreality.py .
+COPY serverIMG.py .
+COPY start.sh . 
 
-COPY . .
-
-CMD ["python","sreality.py" ,"server.py"]
+CMD ["sh", "-c", "./start.sh"]

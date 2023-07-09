@@ -1,5 +1,4 @@
 version: '3'
-
 services:
   scraper:
     build:
@@ -7,22 +6,36 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - db
-    command: python -m sreality
-
-  db:
-    image: postgres
-    restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 159357lol
-      POSTGRES_DB: postgres
-
-  server:
+      - POSTGRES_HOST=db
+      - DISPLAY=:99  # Set the display environment variable for running Chrome
+    volumes:
+      - ./data:/app/data
+    networks:
+      - app-network
+  web:
     build:
       context: .
       dockerfile: Dockerfile
+    ports:
+      - 80:80
     depends_on:
       - db
-    command: python -m server
-    ports:
-      - '8080:8080'
+    environment:
+      - POSTGRES_HOST=db
+    networks:
+      - app-network
+  db:
+    image: postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=159357lol
+      - POSTGRES_DB=postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+networks:
+  app-network:
+volumes:
+  db-data:
