@@ -187,7 +187,7 @@ def scrap_all(typ_obchodu = "prodej", typ_stavby = "byty", pages = 1):
 
     return data
 
-data = scrap_all(pages=4)
+data = scrap_all(pages=25)
 
 data[['null','detail', 'prodej','byt','velikost','lokace','id']] = data.url.str.split("/", expand = True)
 data = data.drop(['url','null', 'detail','prodej','byt','id'], axis=1)
